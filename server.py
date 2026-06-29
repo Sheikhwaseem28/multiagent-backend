@@ -19,9 +19,26 @@ class ResearchRequest(BaseModel):
     topic: str
     depth: str = "standard"
 
+@app.get("/usage")
+def get_usage_status():
+    from limit_manager import get_usage, LIMIT
+    usage = get_usage()
+    return {
+        "searches": usage["searches"],
+        "api_calls": usage["api_calls"],
+        "limit": LIMIT,
+        "reached": usage["searches"] >= LIMIT or usage["api_calls"] >= LIMIT
+    }
+
 @app.post("/research")
 def research(req: ResearchRequest):
     print(f"Received research request for topic: {req.topic}")
+    from fastapi import HTTPException
+    from limit_manager import check_limit
+    try:
+        check_limit()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
     result = run_research_pipeline(req.topic)
     return result
 

@@ -29,6 +29,9 @@ def run_research_pipeline_stream(topic: str):
         return f"data: {json.dumps(payload)}\n\n"
 
     try:
+        from limit_manager import increment_search
+        increment_search()
+        
         # Step 1: Search Agent
         yield emit("agent_start", "search", {"log": "Search agent is working..."})
         search_agent = build_search_agent()
@@ -98,6 +101,9 @@ def run_research_pipeline_stream(topic: str):
 
 
 def run_research_pipeline(topic: str) -> dict:
+    from limit_manager import increment_search
+    increment_search()
+    
     state = {}
     print("\n"+" ="*50)
     print("step 1 - search agent is working ...")

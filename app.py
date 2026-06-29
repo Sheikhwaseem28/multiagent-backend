@@ -350,14 +350,27 @@ st.markdown("""
 col_input, col_spacer, col_pipeline = st.columns([5, 0.5, 4])
 
 with col_input:
+    from limit_manager import get_usage, LIMIT
+    usage = get_usage()
+    searches = usage.get("searches", 0)
+    api_calls = usage.get("api_calls", 0)
+    limit_reached = searches >= LIMIT or api_calls >= LIMIT
+
     st.markdown('<div class="input-card">', unsafe_allow_html=True)
+    
+    if limit_reached:
+        st.error(f"🛑 Limit Reached: {LIMIT} searches or Gemini API calls have been completed. Pipeline execution is locked.")
+    else:
+        st.info(f"📊 Usage stats: {searches}/{LIMIT} searches, {api_calls}/{LIMIT} API calls completed.")
+        
     topic = st.text_input(
         "Research Topic",
-        placeholder="e.g. Quantum computing breakthroughs in 2025",
+        placeholder="e.g. Quantum computing breakthroughs in 2025" if not limit_reached else "Search limit reached",
         key="topic_input",
         label_visibility="visible",
+        disabled=limit_reached
     )
-    run_btn = st.button("⚡  Run Research Pipeline", use_container_width=True)
+    run_btn = st.button("⚡  Run Research Pipeline", use_container_width=True, disabled=limit_reached)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Example chips
@@ -414,75 +427,94 @@ if run_btn:
     if not topic.strip():
         st.warning("Please enter a research topic first.")
     else:
-        st.session_state.results = {}
-        st.session_state.running = True
-        st.session_state.done = False
-        st.rerun()
+        from limit_manager import get_usage, LIMIT
+        usage = get_usage()
+        if usage.get("searches", 0) >= LIMIT or usage.get("api_calls", 0) >= LIMIT:
+            st.error(f"🛑 Limit Reached: {LIMIT} searches or Gemini API calls have been completed.")
+        else:
+            st.session_state.results = {}
+            st.session_state.running = True
+            st.session_state.done = False
+            st.rerun()
 
 if st.session_state.running and not st.session_state.done:
-    results = {}
-    topic_val = st.session_state.topic_input
+    try:
+        from limit_manager import increment_search, GeminiLimitReachedException
+        increment_search()
 
-    # ── Step 1: Search ──
-    with st.spinner("🔍  Search Agent is working…"):
-        search_agent = build_search_agent()
-        sr = search_agent.invoke({
-            "messages": [("user", f"Find recent, reliable and detailed information about: {topic_val}")]
-        })
-        results["search"] = sr["messages"][-1].content
-        st.session_state.results = dict(results)
-    st.rerun() if False else None   # keep inline for now
+        results = {}
+        topic_val = st.session_state.topic_input
 
-    # ── Step 2: Reader ──
-    with st.spinner("📄  Reader Agent is scraping top resources…"):
-        reader_agent = build_reader_agent()
-        rr = reader_agent.invoke({
-            "messages": [("user",
-                f"Based on the following search results about '{topic_val}', "
-                f"pick the most relevant URL and scrape it for deeper content.\n\n"
-                f"Search Results:\n{results['search'][:800]}"
-            )]
-        })
-        results["reader"] = rr["messages"][-1].content
-        st.session_state.results = dict(results)
+        # ── Step 1: Search ──
+        with st.spinner("🔍  Search Agent is working…"):
+            search_agent = build_search_agent()
+            sr = search_agent.invoke({
+                "messages": [("user", f"Find recent, reliable and detailed information about: {topic_val}")]
+            })
+            results["search"] = sr["messages"][-1].content
+            st.session_state.results = dict(results)
+        st.rerun() if False else None   # keep inline for now
 
-    # ── Step 3: Writer ──
-    with st.spinner("✍️  Writer is drafting the report…"):
-        research_combined = (
-            f"SEARCH RESULTS:\n{results['search']}\n\n"
-            f"DETAILED SCRAPED CONTENT:\n{results['reader']}"
-        )
-        results["writer"] = writer_chain.invoke({
-            "topic": topic_val,
-            "research": research_combined
-        })
-        st.session_state.results = dict(results)
+        # ── Step 2: Reader ──
+        with st.spinner("📄  Reader Agent is scraping top resources…"):
+            reader_agent = build_reader_agent()
+            rr = reader_agent.invoke({
+                "messages": [("user",
+                    f"Based on the following search results about '{topic_val}', "
+                    f"pick the most relevant URL and scrape it for deeper content.\n\n"
+                    f"Search Results:\n{results['search'][:800]}"
+                )]
+            })
+            results["reader"] = rr["messages"][-1].content
+            st.session_state.results = dict(results)
 
-    # ── Step 4: Critic ──
-    with st.spinner("🧐  Critic is reviewing the report…"):
-        results["critic"] = critic_chain.invoke({
-            "report": results["writer"]
-        })
-        st.session_state.results = dict(results)
-
-    # ── Save to MongoDB ──
-    if research_collection is not None:
-        try:
-            doc = {
+        # ── Step 3: Writer ──
+        with st.spinner("✍️  Writer is drafting the report…"):
+            research_combined = (
+                f"SEARCH RESULTS:\n{results['search']}\n\n"
+                f"DETAILED SCRAPED CONTENT:\n{results['reader']}"
+            )
+            results["writer"] = writer_chain.invoke({
                 "topic": topic_val,
-                "search_results": results.get("search", ""),
-                "scraped_content": results.get("reader", ""),
-                "report": results.get("writer", ""),
-                "feedback": results.get("critic", ""),
-                "created_at": datetime.utcnow()
-            }
-            research_collection.insert_one(doc)
-        except Exception as e:
-            st.toast(f"Database save error: {e}")
+                "research": research_combined
+            })
+            st.session_state.results = dict(results)
 
-    st.session_state.running = False
-    st.session_state.done = True
-    st.rerun()
+        # ── Step 4: Critic ──
+        with st.spinner("🧐  Critic is reviewing the report…"):
+            results["critic"] = critic_chain.invoke({
+                "report": results["writer"]
+            })
+            st.session_state.results = dict(results)
+
+        # ── Save to MongoDB ──
+        if research_collection is not None:
+            try:
+                doc = {
+                    "topic": topic_val,
+                    "search_results": results.get("search", ""),
+                    "scraped_content": results.get("reader", ""),
+                    "report": results.get("writer", ""),
+                    "feedback": results.get("critic", ""),
+                    "created_at": datetime.utcnow()
+                }
+                research_collection.insert_one(doc)
+            except Exception as e:
+                st.toast(f"Database save error: {e}")
+
+        st.session_state.running = False
+        st.session_state.done = True
+        st.rerun()
+    except GeminiLimitReachedException as e:
+        st.session_state.running = False
+        st.session_state.done = False
+        st.error(f"🛑 Limit Reached: {str(e)}")
+    except Exception as e:
+        if e.__class__.__name__ in ("RerunException", "StopException"):
+            raise e
+        st.session_state.running = False
+        st.session_state.done = False
+        st.error(f"❌ An error occurred: {str(e)}")
 
 
 # ── Results display ───────────────────────────────────────────────────────────

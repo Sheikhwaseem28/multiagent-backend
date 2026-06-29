@@ -4,11 +4,16 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from tools import web_search , scrape_url 
 from dotenv import load_dotenv
+from limit_manager import GeminiUsageCallbackHandler
 
 load_dotenv()
 
 #model setup 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash", 
+    temperature=0, 
+    callbacks=[GeminiUsageCallbackHandler()]
+)
 
 
 #1st agent 
