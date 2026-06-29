@@ -35,7 +35,8 @@ def run_research_pipeline_stream(topic: str):
         search_result = search_agent.invoke({
             "messages": [("user", f"Find recent, reliable and detailed information about: {topic}")]
         })
-        state["search_results"] = search_result['messages'][-1].content
+        tool_outputs = [m.content for m in search_result['messages'] if m.type == 'tool']
+        state["search_results"] = "\n\n".join(tool_outputs) if tool_outputs else search_result['messages'][-1].content
         yield emit("agent_complete", "search", {"log": "Search complete", "output": state["search_results"]})
 
         # Step 2: Reader Agent
@@ -48,7 +49,8 @@ def run_research_pipeline_stream(topic: str):
                 f"Search Results:\n{state['search_results'][:800]}"
             )]
         })
-        state['scraped_content'] = reader_result['messages'][-1].content
+        tool_outputs = [m.content for m in reader_result['messages'] if m.type == 'tool']
+        state['scraped_content'] = "\n\n".join(tool_outputs) if tool_outputs else reader_result['messages'][-1].content
         yield emit("agent_complete", "reader", {"log": "Scraping complete", "output": state["scraped_content"]})
 
         # Step 3: Writer Chain
@@ -104,7 +106,8 @@ def run_research_pipeline(topic: str) -> dict:
     search_result = search_agent.invoke({
         "messages" : [("user", f"Find recent, reliable and detailed information about: {topic}")]
     })
-    state["search_results"] = search_result['messages'][-1].content
+    tool_outputs = [m.content for m in search_result['messages'] if m.type == 'tool']
+    state["search_results"] = "\n\n".join(tool_outputs) if tool_outputs else search_result['messages'][-1].content
     print("\n search result ",state['search_results'])
 
     print("\n"+" ="*50)
@@ -118,7 +121,8 @@ def run_research_pipeline(topic: str) -> dict:
             f"Search Results:\n{state['search_results'][:800]}"
         )]
     })
-    state['scraped_content'] = reader_result['messages'][-1].content
+    tool_outputs = [m.content for m in reader_result['messages'] if m.type == 'tool']
+    state['scraped_content'] = "\n\n".join(tool_outputs) if tool_outputs else reader_result['messages'][-1].content
     print("\nscraped content: \n", state['scraped_content'])
 
     print("\n"+" ="*50)
