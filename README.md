@@ -27,7 +27,7 @@ The backend operates on a sequential pipeline architecture (`pipeline.py`), pass
 
 - **Core Framework**: FastAPI, Uvicorn
 - **AI Ecosystem**: LangChain, LangChain Core/Community, LangChain OpenAI
-- **LLM Provider**: Google Gemini (gemini-2.5-flash)
+- **LLM Provider**: Google Gemini (gemini-3.6-flash)
 - **Search Engine**: Tavily Search API
 - **Web Scraping**: BeautifulSoup4, requests, lxml, aiohttp
 - **Data Validation**: Pydantic
